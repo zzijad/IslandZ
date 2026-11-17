@@ -39,23 +39,36 @@ public static class Sistem
         _ => 0,
     };
 
-    // Putanja na koju pokazuje .lnk precica (prazno ako ne moze da se procita).
-    public static string CiljPrecice(string lnk)
+    // Iz .lnk precice: program na koji pokazuje, fajl sa ikonicom i redni broj ikonice u njemu.
+    // Prazno ako ne moze da se procita. Poziva se sa UI niti.
+    public static (string cilj, string ikona, int indeks) CitajPrecicu(string lnk)
     {
         try
         {
             var tip = Type.GetTypeFromProgID("WScript.Shell");
-            if (tip == null) return "";
+            if (tip == null) return ("", "", 0);
             dynamic shell = Activator.CreateInstance(tip)!;
             dynamic precica = shell.CreateShortcut(lnk);
-            string cilj = precica.TargetPath;
-            return cilj ?? "";
+            string cilj = precica.TargetPath ?? "";
+            string lok = precica.IconLocation ?? "";
+            string ikona = lok;
+            int indeks = 0;
+            int zarez = lok.LastIndexOf(',');
+            if (zarez >= 0)
+            {
+                ikona = lok.Substring(0, zarez);
+                int.TryParse(lok.Substring(zarez + 1).Trim(), out indeks);
+            }
+            ikona = Environment.ExpandEnvironmentVariables(ikona.Trim().Trim('"'));
+            return (Environment.ExpandEnvironmentVariables(cilj), ikona, indeks);
         }
         catch
         {
-            return "";
+            return ("", "", 0);
         }
     }
+
+    public static string CiljPrecice(string lnk) => CitajPrecicu(lnk).cilj;
 
     // Podsetnik pravi precicu na desktopu, a ako radi sa Windowsom i unos u Run kljucu.
     public static void OtvoriPodsetnik()

@@ -6,9 +6,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Storage;
-using Windows.Storage.FileProperties;
 
 namespace IslandZ;
 
@@ -116,25 +113,13 @@ public static class Programi
         Podesavanja.Sacuvaj();
     }
 
-    // Ikona programa, onako kako je prikazuje Windows.
-    public static async Task<ImageSource?> Ikona(Stavka s)
+    // Ikonica programa. Poziva se sa UI niti.
+    public static ImageSource? Ikona(Stavka s)
     {
         if (ikone.TryGetValue(s.Putanja, out var gotova)) return gotova;
-        try
-        {
-            string izvor = s.Cilj.Length > 0 && File.Exists(s.Cilj) ? s.Cilj : s.Putanja;
-            var fajl = await StorageFile.GetFileFromPathAsync(izvor);
-            using var sl = await fajl.GetThumbnailAsync(ThumbnailMode.SingleItem, 96, ThumbnailOptions.UseCurrentScale);
-            if (sl == null) return null;
-            var bmp = new BitmapImage();
-            await bmp.SetSourceAsync(sl);
-            ikone[s.Putanja] = bmp;
-            return bmp;
-        }
-        catch
-        {
-            return null;
-        }
+        var nova = Ikone.Ucitaj(s.Putanja);
+        if (nova != null) ikone[s.Putanja] = nova;
+        return nova;
     }
 
     // Programi koji trenutno imaju prozor: putanja .exe (malim slovima) -> prozor.

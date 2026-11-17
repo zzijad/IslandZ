@@ -496,14 +496,10 @@ public sealed partial class IslandWindow : UserControl
         return dugme;
     }
 
-    private async void UcitajIkonu(Image slika, Stavka s)
+    private void UcitajIkonu(Image slika, Stavka s)
     {
-        try
-        {
-            var izvor = await Programi.Ikona(s);
-            if (izvor != null) slika.Source = izvor;
-        }
-        catch { }
+        var izvor = Programi.Ikona(s);
+        if (izvor != null) slika.Source = izvor;
     }
 
     private void PokreniStavku(Stavka s)
