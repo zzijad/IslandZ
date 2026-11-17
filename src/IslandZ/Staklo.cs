@@ -3,7 +3,6 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
-using Microsoft.UI.Content;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
@@ -74,7 +73,7 @@ public sealed class ProvidanBackdrop : SystemBackdrop
 // nego za jedan vizual, koji moze da se zaobli i menja velicinu.
 public sealed class Staklo
 {
-    private readonly ContentExternalBackdropLink veza;
+    private readonly VezaStakla veza;
     private readonly DesktopAcrylicController kontroler;
     private readonly Visual vizual;
     private readonly RectangleClip isecak;
@@ -82,9 +81,8 @@ public sealed class Staklo
     public Staklo(UIElement domacin, int providnost)
     {
         var k = ElementCompositionPreview.GetElementVisual(domacin).Compositor;
-        veza = ContentExternalBackdropLink.Create(k);
-        veza.ExternalBackdropBorderMode = CompositionBorderMode.Soft;
-        vizual = veza.PlacementVisual;
+        veza = new VezaStakla(k);
+        vizual = veza.Vizual;
         isecak = k.CreateRectangleClip();
         vizual.Clip = isecak;
 
@@ -96,7 +94,7 @@ public sealed class Staklo
             IsInputActive = true,
             Theme = SystemBackdropTheme.Dark,
         });
-        kontroler.AddSystemBackdropTarget(veza);
+        kontroler.AddSystemBackdropTarget(veza.Meta);
         ElementCompositionPreview.SetElementChildVisual(domacin, vizual);
     }
 
