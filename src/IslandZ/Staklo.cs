@@ -1,73 +1,11 @@
 using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
-using Microsoft.UI.Xaml.Media;
 
 namespace IslandZ;
-
-// Cini prozor potpuno providnim: iza XAML sadrzaja nema nikakve pozadine.
-// Sam oblik ostrva (pilula) crta XAML, sa glatkim ivicama.
-public sealed class ProvidanBackdrop : SystemBackdrop
-{
-    private static IntPtr kontrolerReda;
-    private static Windows.UI.Composition.Compositor? kompozitor;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DispatcherQueueOptions
-    {
-        public int dwSize;
-        public int threadType;
-        public int apartmentType;
-    }
-
-    [DllImport("CoreMessaging.dll")]
-    private static extern int CreateDispatcherQueueController([In] DispatcherQueueOptions options, out IntPtr controller);
-
-    // Sistemski kompozitor trazi sistemski red poruka na ovoj niti.
-    private static Windows.UI.Composition.Compositor Kompozitor
-    {
-        get
-        {
-            if (kompozitor == null)
-            {
-                if (Windows.System.DispatcherQueue.GetForCurrentThread() == null && kontrolerReda == IntPtr.Zero)
-                {
-                    DispatcherQueueOptions o;
-                    o.dwSize = Marshal.SizeOf<DispatcherQueueOptions>();
-                    o.threadType = 2;     // DQTYPE_THREAD_CURRENT
-                    o.apartmentType = 2;  // DQTAT_COM_STA
-                    CreateDispatcherQueueController(o, out kontrolerReda);
-                }
-                kompozitor = new Windows.UI.Composition.Compositor();
-            }
-            return kompozitor;
-        }
-    }
-
-    protected override void OnDefaultSystemBackdropConfigurationChanged(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot)
-    {
-        if (target != null)
-            base.OnDefaultSystemBackdropConfigurationChanged(target, xamlRoot);
-    }
-
-    protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop connectedTarget, XamlRoot xamlRoot)
-    {
-        connectedTarget.SystemBackdrop = Kompozitor.CreateColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
-        base.OnTargetConnected(connectedTarget, xamlRoot);
-    }
-
-    protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop disconnectedTarget)
-    {
-        var cetka = disconnectedTarget.SystemBackdrop;
-        disconnectedTarget.SystemBackdrop = null;
-        cetka?.Dispose();
-        base.OnTargetDisconnected(disconnectedTarget);
-    }
-}
 
 // Zamuceno staklo iseceno u oblik ostrva. Sistemski akril se ne vezuje za ceo prozor
 // nego za jedan vizual, koji moze da se zaobli i menja velicinu.

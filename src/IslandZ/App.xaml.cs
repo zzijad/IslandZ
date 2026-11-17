@@ -28,7 +28,7 @@ public partial class App : Application
         Programi.UcitajStartMeni();
 
         Island = new IslandWindow();
-        Island.Activate();
+        Island.Prikazi();
     }
 
     public static void PrikaziPodesavanja()
@@ -46,7 +46,6 @@ public partial class App : Application
     {
         Island?.Ugasi();
         prozorPodesavanja?.Close();
-        Island?.Close();
         Current.Exit();
     }
 }

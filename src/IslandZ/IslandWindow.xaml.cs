@@ -27,14 +27,18 @@ using VirtualKey = Windows.System.VirtualKey;
 
 namespace IslandZ;
 
-public sealed partial class IslandWindow : Window
+// Ostrvo. Nije obican WinUI prozor: XAML sadrzaj zivi u golom Win32 prozoru bez
+// sopstvene povrsine (WS_EX_NOREDIRECTIONBITMAP), jer je samo takav prozor zaista
+// providan i samo kroz njega staklo vidi ono sto je iza.
+public sealed partial class IslandWindow : UserControl
 {
     private enum Stanje { Pilula, Rasireno, Obavestenje }
 
     private const int UKoloni = 6;
 
-    private readonly IntPtr hwnd;
-    private readonly Win.SubclassProc podklasa; // drzi se u polju da ga GC ne pokupi
+    private readonly IntPtr hwnd, xamlHwnd;
+    private readonly Win.WndProc procedura; // drzi se u polju da ga GC ne pokupi
+    private readonly DesktopWindowXamlSource izvor;
     private readonly DispatcherQueueTimer animTajmer, pollTajmer, sekTajmer;
     private readonly Stopwatch anim = new();
     private readonly Random rnd = new();
@@ -71,31 +75,31 @@ public sealed partial class IslandWindow : Window
     public IslandWindow()
     {
         InitializeComponent();
-        Title = "IslandZ";
-        hwnd = WindowNative.GetWindowHandle(this);
+
+        procedura = ProzorskaProcedura;
+        IntPtr instanca = Win.GetModuleHandleW(null);
+        var klasa = new Win.WNDCLASSW
+        {
+            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(procedura),
+            hInstance = instanca,
+            hCursor = Win.LoadCursorW(IntPtr.Zero, (IntPtr)32512),
+            lpszClassName = "IslandZHost",
+        };
+        Win.RegisterClassW(ref klasa);
+        hwnd = Win.CreateWindowExW(
+            Win.WS_EX_NOREDIRECTIONBITMAP | Win.WS_EX_TOOLWINDOW | Win.WS_EX_TOPMOST,
+            "IslandZHost", "IslandZ", Win.WS_POPUP, 0, 0, 0, 0,
+            IntPtr.Zero, IntPtr.Zero, instanca, IntPtr.Zero);
+        if (hwnd == IntPtr.Zero)
+            throw new InvalidOperationException("Prozor ostrva nije napravljen, greska " + Marshal.GetLastWin32Error());
+
+        izvor = new DesktopWindowXamlSource();
+        izvor.Initialize(Win32Interop.GetWindowIdFromWindow(hwnd));
+        izvor.Content = this;
+        xamlHwnd = Win32Interop.GetWindowFromWindowId(izvor.SiteBridge.WindowId);
 
         try { kultura = new CultureInfo("sr-Latn-RS"); }
         catch { kultura = CultureInfo.CurrentCulture; }
-
-        if (AppWindow.Presenter is OverlappedPresenter p)
-        {
-            p.IsAlwaysOnTop = true;
-            p.IsResizable = false;
-            p.IsMaximizable = false;
-            p.IsMinimizable = false;
-            p.SetBorderAndTitleBar(false, false);
-        }
-        AppWindow.IsShownInSwitchers = false;
-        long ex = (long)Win.GetWindowLongPtr(hwnd, Win.GWL_EXSTYLE);
-        Win.SetWindowLongPtr(hwnd, Win.GWL_EXSTYLE, (IntPtr)(ex | Win.WS_EX_TOOLWINDOW));
-
-        podklasa = ProzorskaProcedura;
-        Win.SetWindowSubclass(hwnd, podklasa, (IntPtr)1, IntPtr.Zero);
-
-        // Prozor je potpuno providan; oblik ostrva crta XAML.
-        Pomocno.UcinijProvidnim(hwnd);
-        SystemBackdrop = new ProvidanBackdrop();
-        OcistiPozadinu();
 
         // Sadrzaj se sece na isti zaobljeni oblik kao ostrvo.
         var platnoVizual = ElementCompositionPreview.GetElementVisual(Platno);
@@ -125,10 +129,6 @@ public sealed partial class IslandWindow : Window
             pollTajmer.Start();
             sekTajmer.Start();
         });
-        Closed += (s, e) =>
-        {
-            if (!ugasen) App.Ugasi();
-        };
     }
 
     private static void Bezbedno(Action a)
@@ -142,14 +142,6 @@ public sealed partial class IslandWindow : Window
 
     // ---------- Oblik i polozaj prozora ----------
 
-    private void OcistiPozadinu()
-    {
-        IntPtr hdc = Win.GetDC(hwnd);
-        if (hdc == IntPtr.Zero) return;
-        Pomocno.OcistiPozadinu(hwnd, hdc);
-        Win.ReleaseDC(hwnd, hdc);
-    }
-
     private void PripremiMonitor()
     {
         DisplayArea da = DisplayArea.Primary;
@@ -161,7 +153,7 @@ public sealed partial class IslandWindow : Window
         }
         catch { }
         oblast = da.WorkArea;
-        AppWindow.Move(new PointInt32(oblast.X + oblast.Width / 2, oblast.Y));
+        Win.SetWindowPos(hwnd, IntPtr.Zero, oblast.X + oblast.Width / 2, oblast.Y, 1, 1, Win.SWP_NOZORDER | Win.SWP_NOACTIVATE);
         double d = Win.GetDpiForWindow(hwnd) / 96.0;
         dpi = d > 0 ? d : 1;
     }
@@ -173,7 +165,8 @@ public sealed partial class IslandWindow : Window
         int x = oblast.X + (oblast.Width - iw) / 2;
         int y = oblast.Y + (int)Math.Round(8 * dpi);
         prozor = new RectInt32(x, y, iw, ih);
-        AppWindow.MoveAndResize(prozor);
+        Win.SetWindowPos(hwnd, IntPtr.Zero, x, y, iw, ih, Win.SWP_NOZORDER | Win.SWP_NOACTIVATE);
+        Win.SetWindowPos(xamlHwnd, IntPtr.Zero, 0, 0, iw, ih, Win.SWP_NOZORDER | Win.SWP_NOACTIVATE);
         Okvir.CornerRadius = new CornerRadius(r / dpi);
         Staklo.Zaobli(isecakSadrzaja, iw / dpi, ih / dpi, r / dpi);
         staklo?.Oblik(iw / dpi, ih / dpi, r / dpi);
@@ -268,6 +261,7 @@ public sealed partial class IslandWindow : Window
             drziOtvoreno = true;
             bioAktivan = false;
             Win.SetForegroundWindow(hwnd);
+            Win.SetFocus(xamlHwnd);
             Pretraga.Focus(FocusState.Programmatic);
         }
     }
@@ -725,8 +719,8 @@ public sealed partial class IslandWindow : Window
         }
         if (ceo == sakriven) return;
         sakriven = ceo;
-        if (ceo) AppWindow.Hide();
-        else AppWindow.Show(false);
+        if (ceo) Win.ShowWindow(hwnd, Win.SW_HIDE);
+        else Prikazi();
     }
 
     // ---------- Precica na tastaturi ----------
@@ -743,21 +737,14 @@ public sealed partial class IslandWindow : Window
             precicaRegistrovana = Win.RegisterHotKey(hwnd, 1, mod | Win.MOD_NOREPEAT, Win.VK_SPACE);
     }
 
-    private IntPtr ProzorskaProcedura(IntPtr h, uint msg, IntPtr wParam, IntPtr lParam, IntPtr id, IntPtr data)
+    private IntPtr ProzorskaProcedura(IntPtr h, uint msg, IntPtr wParam, IntPtr lParam)
     {
         if (msg == Win.WM_HOTKEY)
         {
             Bezbedno(Prebaci);
             return IntPtr.Zero;
         }
-        if (msg == Win.WM_ERASEBKGND && Pomocno.OcistiPozadinu(h, wParam))
-            return (IntPtr)1;
-        if (msg == Win.WM_DWMCOMPOSITIONCHANGED)
-        {
-            Pomocno.UcinijProvidnim(h);
-            return IntPtr.Zero;
-        }
-        return Win.DefSubclassProc(h, msg, wParam, lParam);
+        return Win.DefWindowProcW(h, msg, wParam, lParam);
     }
 
     // ---------- Podesavanja ----------
@@ -840,6 +827,23 @@ public sealed partial class IslandWindow : Window
         pollTajmer.Stop();
         sekTajmer.Stop();
         if (precicaRegistrovana) Win.UnregisterHotKey(hwnd, 1);
+        try
+        {
+            Win.ShowWindow(hwnd, Win.SW_HIDE);
+            izvor.Dispose();
+            Win.DestroyWindow(hwnd);
+        }
+        catch (Exception ex)
+        {
+            Pomocno.Log(ex);
+        }
+    }
+
+    // Prikazuje ostrvo bez uzimanja fokusa od programa u kome korisnik radi.
+    public void Prikazi()
+    {
+        Win.ShowWindow(hwnd, Win.SW_SHOWNOACTIVATE);
+        izvor.SiteBridge.Show();
     }
 
     // ---------- Dogadjaji iz XAML-a ----------
