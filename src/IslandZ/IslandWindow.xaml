@@ -13,6 +13,7 @@
             </MenuFlyout>
         </Grid.ContextFlyout>
 
+        <Grid x:Name="StakloDomacin" IsHitTestVisible="False" />
         <Border x:Name="Okvir" BorderThickness="1" BorderBrush="#66FFFFFF" IsHitTestVisible="False" />
 
         <Canvas x:Name="Platno">

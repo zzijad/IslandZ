@@ -7,10 +7,12 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.UI;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -37,7 +39,9 @@ public sealed partial class IslandWindow : Window
     private readonly Stopwatch anim = new();
     private readonly Random rnd = new();
     private readonly CultureInfo kultura;
-    private StakloBackdrop? staklo;
+    private readonly RectangleClip isecakSadrzaja;
+    private Staklo? staklo;
+    private bool stakloNeuspelo;
 
     private Stanje stanje = Stanje.Pilula;
     private double dpi = 1, skala = 1;
@@ -88,6 +92,16 @@ public sealed partial class IslandWindow : Window
         podklasa = ProzorskaProcedura;
         Win.SetWindowSubclass(hwnd, podklasa, (IntPtr)1, IntPtr.Zero);
 
+        // Prozor je potpuno providan; oblik ostrva crta XAML.
+        Pomocno.UcinijProvidnim(hwnd);
+        SystemBackdrop = new ProvidanBackdrop();
+        OcistiPozadinu();
+
+        // Sadrzaj se sece na isti zaobljeni oblik kao ostrvo.
+        var platnoVizual = ElementCompositionPreview.GetElementVisual(Platno);
+        isecakSadrzaja = platnoVizual.Compositor.CreateRectangleClip();
+        platnoVizual.Clip = isecakSadrzaja;
+
         animTajmer = DispatcherQueue.CreateTimer();
         animTajmer.Interval = TimeSpan.FromMilliseconds(15);
         animTajmer.Tick += (s, e) => AnimTick();
@@ -128,6 +142,14 @@ public sealed partial class IslandWindow : Window
 
     // ---------- Oblik i polozaj prozora ----------
 
+    private void OcistiPozadinu()
+    {
+        IntPtr hdc = Win.GetDC(hwnd);
+        if (hdc == IntPtr.Zero) return;
+        Pomocno.OcistiPozadinu(hwnd, hdc);
+        Win.ReleaseDC(hwnd, hdc);
+    }
+
     private void PripremiMonitor()
     {
         DisplayArea da = DisplayArea.Primary;
@@ -152,9 +174,9 @@ public sealed partial class IslandWindow : Window
         int y = oblast.Y + (int)Math.Round(8 * dpi);
         prozor = new RectInt32(x, y, iw, ih);
         AppWindow.MoveAndResize(prozor);
-        int d = (int)Math.Round(r * 2);
-        Win.SetWindowRgn(hwnd, Win.CreateRoundRectRgn(0, 0, iw + 1, ih + 1, d, d), true);
         Okvir.CornerRadius = new CornerRadius(r / dpi);
+        Staklo.Zaobli(isecakSadrzaja, iw / dpi, ih / dpi, r / dpi);
+        staklo?.Oblik(iw / dpi, ih / dpi, r / dpi);
     }
 
     private (double w, double h, double r) Dizajn()
@@ -728,6 +750,13 @@ public sealed partial class IslandWindow : Window
             Bezbedno(Prebaci);
             return IntPtr.Zero;
         }
+        if (msg == Win.WM_ERASEBKGND && Pomocno.OcistiPozadinu(h, wParam))
+            return (IntPtr)1;
+        if (msg == Win.WM_DWMCOMPOSITIONCHANGED)
+        {
+            Pomocno.UcinijProvidnim(h);
+            return IntPtr.Zero;
+        }
         return Win.DefSubclassProc(h, msg, wParam, lParam);
     }
 
@@ -745,26 +774,36 @@ public sealed partial class IslandWindow : Window
 
         if (pod.Stil == "crno")
         {
-            if (staklo != null)
-            {
-                SystemBackdrop = null;
-                staklo = null;
-            }
-            Koren.Background = Boja(255, 0, 0, 0);
+            if (staklo != null) staklo.Vidljivo = false;
+            Okvir.Background = Boja(255, 0, 0, 0);
             Okvir.BorderBrush = Boja(0x33, 255, 255, 255);
         }
         else
         {
-            if (staklo == null)
+            if (staklo == null && !stakloNeuspelo)
             {
-                staklo = new StakloBackdrop(pod.Providnost);
-                SystemBackdrop = staklo;
+                try
+                {
+                    staklo = new Staklo(StakloDomacin, pod.Providnost);
+                }
+                catch (Exception ex)
+                {
+                    stakloNeuspelo = true;
+                    Pomocno.Log(ex);
+                }
+            }
+            if (staklo != null)
+            {
+                staklo.Postavi(pod.Providnost);
+                staklo.Vidljivo = true;
+                Okvir.Background = Boja(0, 0, 0, 0);
             }
             else
             {
-                staklo.Postavi(pod.Providnost);
+                // Zamucenje nije dostupno na ovom sistemu: providna tamna boja bez zamucenja.
+                byte a = (byte)(235 - pod.Providnost);
+                Okvir.Background = Boja(a, 22, 28, 44);
             }
-            Koren.Background = Boja(0, 0, 0, 0);
             Okvir.BorderBrush = Boja(0x66, 255, 255, 255);
         }
 

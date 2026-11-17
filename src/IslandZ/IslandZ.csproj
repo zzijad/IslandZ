@@ -16,7 +16,7 @@
     <SelfContained>true</SelfContained>
     <Nullable>enable</Nullable>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
